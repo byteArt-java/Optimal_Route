@@ -4,10 +4,20 @@ public class City {
     private final String label;
     private boolean isVisited;
     private int countBranch;
+    private int countReferenced;
 
     public City(String label) {
         this.label = label;
         countBranch = 1;
+        countReferenced = 0;
+    }
+
+    public int getCountReferenced() {
+        return countReferenced;
+    }
+
+    public void setCountReferenced(int countReferenced) {
+        this.countReferenced = countReferenced;
     }
 
     public boolean getVisited() {

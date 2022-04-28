@@ -4,6 +4,7 @@ public class AlgorithmSearchMinDistance implements Graph{
     private final List<City> vertexList;//список городов
     private final int[][] adjacencyMatrix;//расстояние от одного города, до другого
     private final boolean[][] adjacencyMatrixB;//можно ли проехать с одного города до другого
+    static boolean nextSetVisited = false;//если город до этого имел 2 ссылки, то prev города, тоже не должны быть посещенными
 
     public AlgorithmSearchMinDistance(int maxVertexCount) {
         this.vertexList = new ArrayList<>(maxVertexCount);
@@ -15,32 +16,16 @@ public class AlgorithmSearchMinDistance implements Graph{
         vertexList.add(new City(label));
     }
 
-    @Override public boolean addEdge(String startLabel, String secondLabel, String... others) {
-        boolean result = addEdge(startLabel, secondLabel);
-        for (String other : others) {
-            result &= addEdge(startLabel, other);
-        }
-        return result;
-    }
-
     @Override public boolean addEdge(String startLabel, String secondLabel,int distance) {
         int startIndex = indexOf(startLabel);
         int endIndex = indexOf(secondLabel);
+        int oldCountReferenced = vertexList.get(endIndex).getCountReferenced();
+        vertexList.get(endIndex).setCountReferenced(++oldCountReferenced);
         if (startIndex == -1 || endIndex == -1){
             return false;
         }
         adjacencyMatrix[startIndex][endIndex] = distance;
         adjacencyMatrixB[startIndex][endIndex] = true;
-        return true;
-    }
-
-    @Override public boolean addEdge(String startLabel, String secondLabel) {
-        int startIndex = indexOf(startLabel);
-        int endIndex = indexOf(secondLabel);
-        if (startIndex == -1 || endIndex == -1){
-            return false;
-        }
-        adjacencyMatrixB[startIndex][endIndex] = true;//тут находится вес
         return true;
     }
 
@@ -88,35 +73,34 @@ public class AlgorithmSearchMinDistance implements Graph{
         visitVertex(stack,city,sb,endCity);
         int localTempDistance = 0;
         while (!stack.isEmpty()){
-            city = getNearUnvisitedCity(stack.peek(),endCity);
+            city = getNearUnvisitedCity(stack.peek(),startCity,stack);
+            //если самый начальный город не имеет ветвей, то конец выходим из цикла
+            if (vertexList.get(startIndex).getCountBranch() == 0){
+                break;
+            }
+            //когда после города назначения идет null
             if (city == null){
-                if (stack.size() == 1){
-                    break;
-                }
-                int j = indexOf(stack.pop().getLabel());
+                stack.clear();
+                int oldCountBranch = vertexList.get(startIndex).getCountBranch();
+                vertexList.get(startIndex).setCountBranch(--oldCountBranch);
+                stack.push(vertexList.get(startIndex));
+                sb.append(startCity).append(" -> ");
+                //когда мы нашли след город
+            }else {
+                int j = indexOf(city.getLabel());
                 int i = indexOf(stack.peek().getLabel());
                 localTempDistance += getAdjacencyMatrix()[i][j];
-            }else {
                 visitVertex(stack,city,sb,endCity);
             }
-            //этот блок сравнивает 2 расстояния и в зависимости от этого обнуляет и добавляет инфу когда достигаем,
-            // начала. Также если у города более 1 ответвления, то нужно у этого города setVisited установить false
-            if (stack.size() == 1 && stack.peek().getVisited() && localTempDistance < tempTotalDistancePath){
+            //этот блок проверяет дошли ли мы до конца, и если дошли, то скидывает в Map список городов и общее расстояние
+            if (stack.peek().getLabel().equals(endCity) && localTempDistance < tempTotalDistancePath){
                 tempTotalDistancePath = localTempDistance;
                 pathCitiesAndDistance.put(sb.toString(),localTempDistance);
                 localTempDistance = 0;
                 sb.setLength(0);
-                sb.append(startCity).append(" -> ");
-                for (City city1 : vertexList) {
-                    if (city1.getCountBranch() > 1){
-                        city1.setVisited(false);
-                        int countBranchOld = city1.getCountBranch();
-                        city1.setCountBranch(--countBranchOld);
-                    }
-                }
             }
         }
-
+        //===============находим минимальное расстояние из списка маршрутов
         String cities = "";
         int distance = Integer.MAX_VALUE;
         for (Map.Entry<String, Integer> pair : pathCitiesAndDistance.entrySet()) {
@@ -127,38 +111,38 @@ public class AlgorithmSearchMinDistance implements Graph{
         }
         pathCitiesAndDistance = new HashMap<>();
         pathCitiesAndDistance.put(cities,distance);
-//        System.out.println(Arrays.toString(new Map[]{pathCitiesAndDistance}));
+        //==================================================================
+        System.out.println(Arrays.toString(new Map[]{pathCitiesAndDistance}));
         return pathCitiesAndDistance;
     }
 
 
-    private City getNearUnvisitedCity(City city, String destinationCity) {
+    private City getNearUnvisitedCity(City city, String startCity,Stack stack) {
         int currentIndex = vertexList.indexOf(city);
         City cityReturn = null;
-        boolean isFined = false;
+        boolean isFinedOneCity = false;
         for (int i = 0; i < getSize(); i++) {
-            if (adjacencyMatrixB[currentIndex][i] && !vertexList.get(i).getVisited() && !isFined){
-                adjacencyMatrixB[currentIndex][i] = false;
+            if (adjacencyMatrixB[currentIndex][i] && !vertexList.get(i).getVisited() && !isFinedOneCity){
                 cityReturn = vertexList.get(i);
-                isFined = true;
+                isFinedOneCity = true;
                 continue;
             }
+            //ситуация при которой мы еще находим ветку
             if (adjacencyMatrixB[currentIndex][i] && !vertexList.get(i).getVisited()){
-                int a = city.getCountBranch();
-                city.setCountBranch(++a);
+                int oldCountBranch = vertexList.get(indexOf(startCity)).getCountBranch();
+                vertexList.get(indexOf(startCity)).setCountBranch(++oldCountBranch);
+                vertexList.get(currentIndex).setVisited(false);
+
+                //если мы еще нашли у кого то ветку, то устанавливаем знач SetVisited= false, чтобы потом еще раз пройтись
+                for (int j = 0; j < stack.size(); j++) {
+                    City city1 = (City) stack.get(j);
+                    if (city1.getVisited()){
+                        city1.setVisited(false);
+                    }
+                }
             }
         }
         return cityReturn;
-    }
-
-    private City getNearUnvisitedCity(City city) {
-        int currentIndex = vertexList.indexOf(city);
-        for (int i = 0; i < getSize(); i++) {
-            if (adjacencyMatrix[currentIndex][i] > 0 && !vertexList.get(i).getVisited()){
-                return vertexList.get(i);
-            }
-        }
-        return null;
     }
 
     private void visitVertex(Stack<City> stack, City city,StringBuilder sb,String destinationCity) {
@@ -167,32 +151,19 @@ public class AlgorithmSearchMinDistance implements Graph{
             city.setVisited(false);
             sb.append(city.getLabel());
         }else {
-            city.setVisited(true);
+            city.setVisited(!nextSetVisited);
             sb.append(city.getLabel()).append(" -> ");
         }
-    }
-
-    private void visitVertex(Queue<City> queue, City city) {
-        System.out.println(city.getLabel() + " ");
-        queue.add(city);
-        city.setVisited(true);
-    }
-
-    @Override public void bfs(String startLabel) {//Москва
-        int startIndex = indexOf(startLabel);
-        if (startIndex == -1){
-            throw new IllegalArgumentException("неверная вершина " + startLabel);
+        //если больше двух веток, то нужно установить false setVisited, чтобы мы еще раз могли пройтись по ней
+        if (city.getCountBranch() > 1){
+            city.setVisited(false);
+            sb.append(city.getLabel()).append(" -> ");
         }
-        Queue<City> queue = new LinkedList<>();
-        City city = vertexList.get(startIndex);
-        visitVertex(queue,city);
-        while (!queue.isEmpty()){
-            city = getNearUnvisitedCity(queue.peek());
-            if (city == null){
-                queue.remove();
-            }else {
-                visitVertex(queue,city);
-            }
+        if (city.getCountReferenced() > 1){
+            int oldCountReferenced = vertexList.get(indexOf(city.getLabel())).getCountReferenced();
+            vertexList.get(indexOf(city.getLabel())).setCountReferenced(--oldCountReferenced);
+            nextSetVisited = true;
+            city.setVisited(false);
         }
     }
 
